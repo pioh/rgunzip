@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
@@ -62,19 +63,25 @@ func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
 		ctx.Error("not zip", 400)
 		return
 	}
-	len := uint64(ctx.Request.Header.ContentLength())
+	length := uint64(ctx.Request.Header.ContentLength())
 	done := uint64(0)
 	zipReader := zipstream.NewReader(ctx.RequestBodyStream())
 	for {
+		red, err := ioutil.ReadAll(zipReader)
+		if err != nil {
+			log.Printf("failed read next file: %+v: %+v", base, err)
+			ctx.Error("failed", 500)
+			return
+		}
 		zfile, err := zipReader.Next()
 		if err == io.EOF {
 			break
 		}
-		log.Println(zfile.Name, zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
+		log.Println(zfile.Name, len(red), zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
 		done += zfile.CompressedSize64
 	}
 
-	log.Println("ok", base, len, done, len-done)
+	log.Println("ok", base, length, done, length-done)
 
 	ctx.SetStatusCode(201)
 }
