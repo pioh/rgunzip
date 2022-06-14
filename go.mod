@@ -1,4 +1,4 @@
-module github.com/pioh/rgubzip
+module github.com/pioh/rgunzip
 
 go 1.18
 
