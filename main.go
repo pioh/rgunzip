@@ -18,6 +18,7 @@ var nextQ chan string
 func main() {
 	nextQ = make(chan string, 24)
 	log.Println(os.Args)
+
 	if len(os.Args) < 2 {
 		log.Fatalln("unknown command")
 	}
