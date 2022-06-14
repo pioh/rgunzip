@@ -53,19 +53,21 @@ func recv() {
 }
 
 func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
+	ctx.PostBody()
 	base := filepath.Join(root, string(ctx.RequestURI()))
 	if err := os.MkdirAll(base, 0755); err != nil {
 		log.Printf("faieled mkdirall: %v: %+v", base, err)
 		ctx.Error("failed", 500)
 		return
 	}
-	if string(ctx.Request.Header.ContentType()) != "zip" {
-		ctx.Error("not zip", 400)
-		return
-	}
+	// if string(ctx.Request.Header.ContentType()) != "zip" {
+	// 	ctx.Error("not zip", 400)
+	// 	return
+	// }
 	length := uint64(ctx.Request.Header.ContentLength())
 	done := uint64(0)
-	zipReader := zipstream.NewReader(ctx.RequestBodyStream())
+	bodyReader := ctx.RequestBodyStream()
+	zipReader := zipstream.NewReader(bodyReader)
 	for {
 		zfile, err := zipReader.Next()
 		if err == io.EOF {
@@ -169,7 +171,7 @@ func sendJobZip(next string) error {
 	}
 	uri.Path = path
 	req.SetRequestURI(uri.String())
-	req.Header.SetContentType("zip")
+	req.Header.SetContentType("application/octet-stream")
 
 	res := &fasthttp.Response{}
 	err = fasthttp.Do(req, res)
