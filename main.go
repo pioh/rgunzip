@@ -124,8 +124,8 @@ func sendJobZip(next string) error {
 	if err != nil {
 		return fmt.Errorf("failed calc relative path: %v -> %v: %w", root, next, err)
 	}
-	uri.Path = next
-	req.SetRequestURI(path)
+	uri.Path = path
+	req.SetRequestURI(uri.String())
 	req.Header.SetContentType("zip")
 
 	res := &fasthttp.Response{}
