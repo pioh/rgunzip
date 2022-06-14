@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/karrick/godirwalk"
+	"github.com/krolaw/zipstream"
 	"github.com/valyala/fasthttp"
 )
 
@@ -51,12 +53,28 @@ func recv() {
 
 func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
 	base := filepath.Join(root, string(ctx.RequestURI()))
-	if err := os.MkdirAll(base, 755); err != nil {
+	if err := os.MkdirAll(base, 0755); err != nil {
 		log.Printf("faieled mkdirall: %v: %+v", base, err)
 		ctx.Error("failed", 500)
 		return
 	}
-	log.Println(base)
+	if string(ctx.Request.Header.ContentType()) != "zip" {
+		ctx.Error("not zip", 400)
+		return
+	}
+	len := uint64(ctx.Request.Header.ContentLength())
+	done := uint64(0)
+	zipReader := zipstream.NewReader(ctx.RequestBodyStream())
+	for {
+		zfile, err := zipReader.Next()
+		if err == io.EOF {
+			break
+		}
+		log.Println(zfile.Name, zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
+		done += zfile.CompressedSize64
+	}
+
+	log.Println("ok", base, len, done, len-done)
 
 	ctx.SetStatusCode(201)
 }
@@ -121,8 +139,13 @@ func sendJobZip(next string) error {
 		return fmt.Errorf("failed open file %v: %w", next, err)
 	}
 	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed stat file: %v: %w", next, err)
+	}
+
 	req := &fasthttp.Request{}
-	req.SetBodyStream(file, -1)
+	req.SetBodyStream(file, int(stat.Size()))
 
 	uri := *server
 	path, err := filepath.Rel(root, strings.TrimSuffix(next, ".zip"))

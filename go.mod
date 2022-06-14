@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/karrick/godirwalk v1.17.0
+	github.com/krolaw/zipstream v0.0.0-20180621105154-0a2661891f94
 	github.com/valyala/fasthttp v1.37.0
 )
 
