@@ -39,7 +39,12 @@ func recv() {
 	if root, err = filepath.Abs(os.Args[2]); err != nil {
 		log.Fatalln(err)
 	}
-	if err = fasthttp.ListenAndServe(":8997", fastHTTPHandler); err != nil {
+
+	s := fasthttp.Server{
+		Handler:            fastHTTPHandler,
+		MaxRequestBodySize: 1024 * 1024 * 1024 * 1024,
+	}
+	if err = s.ListenAndServe(":8997"); err != nil {
 		log.Fatalln(err)
 	}
 }
