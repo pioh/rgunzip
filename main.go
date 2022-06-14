@@ -73,7 +73,12 @@ func send() {
 
 	err = godirwalk.Walk(root, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
-			nextQ <- fmt.Sprintf("%s %s\n", de.ModeType(), osPathname)
+			if !de.IsRegular() {
+				return nil
+			}
+			if filepath.Ext(osPathname) == ".zip" {
+				nextQ <- fmt.Sprintf("%s %s\n", de.ModeType(), osPathname)
+			}
 			return nil
 		},
 		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
