@@ -19,9 +19,10 @@ func main() {
 	nextQ = make(chan string, 24)
 	if os.Args[1] == "recv" {
 		recv()
-	}
-	if os.Args[1] == "send" {
+	} else if os.Args[1] == "send" {
 		send()
+	} else {
+		log.Fatalln("unknown command")
 	}
 }
 
@@ -73,6 +74,7 @@ func send() {
 
 	err = godirwalk.Walk(root, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
+			log.Println(osPathname, de.IsDir(), de.IsRegular())
 			if !de.IsRegular() {
 				return nil
 			}
