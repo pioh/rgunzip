@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -46,6 +44,7 @@ func recv() {
 	s := fasthttp.Server{
 		Handler:            fastHTTPHandler,
 		MaxRequestBodySize: 1024 * 1024 * 1024 * 1024,
+		StreamRequestBody:  true,
 	}
 	if err = s.ListenAndServe(":8997"); err != nil {
 		log.Fatalln(err)
@@ -53,7 +52,6 @@ func recv() {
 }
 
 func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
-	ctx.PostBody()
 	base := filepath.Join(root, string(ctx.RequestURI()))
 	if err := os.MkdirAll(base, 0755); err != nil {
 		log.Printf("faieled mkdirall: %v: %+v", base, err)
@@ -65,9 +63,12 @@ func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
 	// 	return
 	// }
 	length := uint64(ctx.Request.Header.ContentLength())
-	done := uint64(0)
+	// done := uint64(0)
+	// done2 := uint64(0)
+
 	bodyReader := ctx.RequestBodyStream()
 	zipReader := zipstream.NewReader(bodyReader)
+
 	for {
 		zfile, err := zipReader.Next()
 		if err == io.EOF {
@@ -78,20 +79,52 @@ func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
 			ctx.Error("failed", 500)
 			return
 		}
+		if !zfile.Mode().IsRegular() {
+			continue
+		}
 
-		red, err := ioutil.ReadAll(zipReader)
-		if err != nil {
-			log.Printf("failed read next file: %+v: %+v", base, err)
+		fname := filepath.Join(base, zfile.Name)
+		ftmp := fname + ".tmp"
+		fdir := filepath.Dir(fname)
+		if err := os.MkdirAll(fdir, 0755); err != nil {
+			log.Printf("failed create dir: %v: %w", fdir, err)
 			ctx.Error("failed", 500)
 			return
 		}
 
-		log.Println(zfile.Name, len(red), zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
-		done += zfile.CompressedSize64
+		tfile, err := os.OpenFile(ftmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			log.Printf("failed open file: %v: %+v", ftmp, err)
+			ctx.Error("failed", 500)
+			return
+		}
+		defer tfile.Close()
+		_, err = io.Copy(tfile, zipReader)
+		if err != nil {
+			log.Printf("failed copy to file: %v: %+v", ftmp, err)
+			ctx.Error("failed", 500)
+			return
+		}
+		// done2 += uint64(n)
+		if err = tfile.Close(); err != nil {
+			log.Printf("failed close file: %v: %+v", ftmp, err)
+			ctx.Error("failed", 500)
+			return
+		}
+		if err = os.Rename(ftmp, fname); err != nil {
+			log.Printf("failed rename file: %v -> %v: %+v", ftmp, fname, err)
+			ctx.Error("failed", 500)
+			return
+		}
+		if err = os.Chtimes(fname, zfile.Modified, zfile.Modified); err != nil {
+			log.Printf("failed set time to file: %v %v: %+v", fname, zfile.Modified, err)
+		}
+		// log.Println(zfile.Name, len(red), zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
+		// done += zfile.CompressedSize64
 	}
 
-	log.Println("ok", base, length, done, length-done)
-
+	log.Println(base, length/1024/1024)
+	// if done == length -
 	ctx.SetStatusCode(201)
 }
 
@@ -111,14 +144,11 @@ func send() {
 		go func() {
 			defer wg.Done()
 			for next := range nextQ {
-				log.Printf("next %v", next)
+				// log.Printf("next %v", next)
 				if err := sendJob(next); err != nil {
 					log.Printf("fail %v: %+v", next, err)
 					time.Sleep(time.Second)
-				} else {
-					log.Printf("done %v", next)
 				}
-
 			}
 		}()
 	}
@@ -165,7 +195,8 @@ func sendJobZip(next string) error {
 	req.SetBodyStream(file, int(stat.Size()))
 
 	uri := *server
-	path, err := filepath.Rel(root, strings.TrimSuffix(next, ".zip"))
+
+	path, err := filepath.Rel(root, filepath.Dir(next))
 	if err != nil {
 		return fmt.Errorf("failed calc relative path: %v -> %v: %w", root, next, err)
 	}
@@ -178,7 +209,18 @@ func sendJobZip(next string) error {
 	if err != nil {
 		return fmt.Errorf("failed do request: %v: %w", next, err)
 	}
+	file.Close()
 
-	log.Printf("request done code: %v", res.StatusCode())
+	if res.StatusCode() == 201 {
+		if err := os.Rename(next, next+".del"); err != nil {
+			log.Printf("failed mark to del file: %v: %v", next, err)
+		}
+		log.Printf("done %v", next)
+	} else {
+		return fmt.Errorf("status not 201: %v: %v", res.StatusCode(), string(res.Body()))
+	}
+
+	//
+	// log.Printf("request done code: %v", res.StatusCode())
 	return nil
 }
