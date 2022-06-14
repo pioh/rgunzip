@@ -159,6 +159,7 @@ func sendJobZip(next string) error {
 	}
 
 	req := &fasthttp.Request{}
+	req.Header.SetMethod(fasthttp.MethodPost)
 	req.SetBodyStream(file, int(stat.Size()))
 
 	uri := *server
