@@ -20,7 +20,7 @@ func main() {
 	log.Println(os.Args)
 
 	if len(os.Args) < 2 {
-		log.Fatalln("unknown command ")
+		log.Fatalln("unknown command  ")
 	}
 	if os.Args[1] == "recv" {
 		recv()
