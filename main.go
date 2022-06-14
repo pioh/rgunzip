@@ -65,7 +65,7 @@ func send() {
 	if server, err = url.Parse(os.Args[3]); err != nil {
 		log.Fatalln(err)
 	}
-
+	log.Printf("root: %v; server: %v", root, server)
 	wg := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
