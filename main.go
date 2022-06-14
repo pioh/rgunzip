@@ -67,16 +67,23 @@ func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
 	done := uint64(0)
 	zipReader := zipstream.NewReader(ctx.RequestBodyStream())
 	for {
+		zfile, err := zipReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("failed read next file: %+v: %+v", base, err)
+			ctx.Error("failed", 500)
+			return
+		}
+
 		red, err := ioutil.ReadAll(zipReader)
 		if err != nil {
 			log.Printf("failed read next file: %+v: %+v", base, err)
 			ctx.Error("failed", 500)
 			return
 		}
-		zfile, err := zipReader.Next()
-		if err == io.EOF {
-			break
-		}
+
 		log.Println(zfile.Name, len(red), zfile.CompressedSize64, zfile.Mode(), zfile.Modified, zfile.FileInfo())
 		done += zfile.CompressedSize64
 	}
