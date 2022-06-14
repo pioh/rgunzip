@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 )
 
 var root string
+var server *url.URL
 var nextQ chan string
 
 func main() {
@@ -59,6 +62,10 @@ func send() {
 		log.Fatalln(err)
 	}
 
+	if server, err = url.Parse(os.Args[3]); err != nil {
+		log.Fatalln(err)
+	}
+
 	wg := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
@@ -79,14 +86,10 @@ func send() {
 
 	err = godirwalk.Walk(root, &godirwalk.Options{
 		Callback: func(osPathname string, de *godirwalk.Dirent) error {
-			log.Println(osPathname, de.IsDir(), de.IsRegular())
 			if !de.IsRegular() {
 				return nil
 			}
-			log.Println(filepath.Ext(osPathname))
-			if filepath.Ext(osPathname) == ".zip" {
-				nextQ <- fmt.Sprintf("%s %s\n", de.ModeType(), osPathname)
-			}
+			nextQ <- osPathname
 			return nil
 		},
 		Unsorted: true, // (optional) set true for faster yet non-deterministic enumeration (see godoc)
@@ -101,5 +104,36 @@ func send() {
 }
 
 func sendJob(next string) error {
+	if filepath.Ext(next) == ".zip" {
+		return sendJobZip(next)
+	}
+	return nil
+}
+
+func sendJobZip(next string) error {
+	file, err := os.Open(next)
+	if err != nil {
+		return fmt.Errorf("failed open file %v: %w", next, err)
+	}
+	defer file.Close()
+	req := &fasthttp.Request{}
+	req.SetBodyStream(file, -1)
+
+	uri := *server
+	path, err := filepath.Rel(root, strings.TrimSuffix(next, ".zip"))
+	if err != nil {
+		return fmt.Errorf("failed calc relative path: %v -> %v: %w", root, next, err)
+	}
+	uri.Path = next
+	req.SetRequestURI(path)
+	req.Header.SetContentType("zip")
+
+	res := &fasthttp.Response{}
+	err = fasthttp.Do(req, res)
+	if err != nil {
+		return fmt.Errorf("failed do request: %v: %w", next, err)
+	}
+
+	log.Printf("request done code: %v", res.StatusCode())
 	return nil
 }
