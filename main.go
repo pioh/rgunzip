@@ -76,6 +76,7 @@ func send() {
 			if !de.IsRegular() {
 				return nil
 			}
+			log.Println(filepath.Ext(osPathname))
 			if filepath.Ext(osPathname) == ".zip" {
 				nextQ <- fmt.Sprintf("%s %s\n", de.ModeType(), osPathname)
 			}
