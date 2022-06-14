@@ -17,6 +17,9 @@ var nextQ chan string
 
 func main() {
 	nextQ = make(chan string, 24)
+	if len(os.Args) < 2 {
+		log.Fatalln("unknown command")
+	}
 	if os.Args[1] == "recv" {
 		recv()
 	} else if os.Args[1] == "send" {
