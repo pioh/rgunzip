@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 )
 
 var root string
+var trash string
 var server *url.URL
 var nextQ chan string
 
@@ -133,10 +135,22 @@ func send() {
 	if root, err = filepath.Abs(os.Args[2]); err != nil {
 		log.Fatalln(err)
 	}
-
+	if root == "" {
+		log.Fatalln("root dir required as 1 arg")
+	}
 	if server, err = url.Parse(os.Args[3]); err != nil {
 		log.Fatalln(err)
 	}
+	if trash, err = filepath.Abs(os.Args[4]); err != nil {
+		log.Fatalln(err)
+	}
+	if trash == "" {
+		log.Fatalln("trash dir required as 3 arg")
+	}
+	if err := os.MkdirAll(trash, 0755); err != nil {
+		log.Fatalf("faieled mkdirall trash dir: %v: %+v", trash, err)
+	}
+
 	log.Printf("root: %v; server: %v", root, server)
 	wg := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
@@ -173,8 +187,28 @@ func send() {
 }
 
 func sendJob(next string) error {
+	if strings.HasSuffix(next, ".zip.del") {
+		return moveTrash(next, "")
+	}
 	if filepath.Ext(next) == ".zip" {
 		return sendJobZip(next)
+	}
+	return nil
+}
+
+func moveTrash(next string, postfix string) error {
+	if strings.HasPrefix(next, trash) {
+		return nil
+	}
+	rel, err := filepath.Rel(root, next)
+	if err != nil {
+		return fmt.Errorf("failed calc rel path %v->%v: %w", root, next, err)
+	}
+	newPath := filepath.Join(trash, strings.ReplaceAll(rel, "/", "__")+postfix)
+	log.Println("new path", newPath)
+
+	if err := os.Rename(next, newPath); err != nil {
+		log.Printf("failed mark to del file: %v: %v", next, err)
 	}
 	return nil
 }
@@ -212,7 +246,7 @@ func sendJobZip(next string) error {
 	file.Close()
 
 	if res.StatusCode() == 201 {
-		if err := os.Rename(next, next+".del"); err != nil {
+		if err := moveTrash(next, ".del"); err != nil {
 			log.Printf("failed mark to del file: %v: %v", next, err)
 		}
 		log.Printf("done %v", next)
